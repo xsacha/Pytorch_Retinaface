@@ -73,6 +73,8 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
+    net = torch.jit.trace(net, torch.randn(1, 3, 1024, 768).to(device))
+    net.save('retina.pt')
 
     resize = 1
 
@@ -102,7 +104,7 @@ if __name__ == '__main__':
         boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
         boxes = boxes * scale / resize
         boxes = boxes.cpu().numpy()
-        scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+        scores = conf.squeeze(0).data.cpu().numpy()
         landms = decode_landm(landms.data.squeeze(0), prior_data, cfg['variance'])
         scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
                                img.shape[3], img.shape[2], img.shape[3], img.shape[2],
