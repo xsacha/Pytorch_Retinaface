@@ -5,6 +5,7 @@ import torchvision.models._utils as _utils
 import torchvision.models as models
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.quantization import QuantStub
 
 def conv_bn(inp, oup, stride = 1):
     return nn.Sequential(
@@ -71,6 +72,7 @@ class FPN(nn.Module):
 
         self.merge1 = conv_bn(out_channels, out_channels)
         self.merge2 = conv_bn(out_channels, out_channels)
+        self.addq = torch.nn.quantized.FloatFunctional() 
 
     def forward(self, input):
         names = list(input.keys())
@@ -82,19 +84,20 @@ class FPN(nn.Module):
 
         up3 = F.interpolate(output3, size=[output2.size(2), output2.size(3)], mode="nearest")
         #output2 = torch.cat((output2, up3), 0)
-        if output2.is_quantized:
-            output2 = torch.ops.quantized.add(output2, up3, 1.0, 0)
-        else:
-            output2.add(up3)
+        #if output2.is_quantized:
+        output2 = self.addq.add(output2, up3) 
+        #else:
+        #    output2.add(up3)
         #output2 = output2 + up3
         output2 = self.merge2(output2)
 
         up2 = F.interpolate(output2, size=[output1.size(2), output1.size(3)], mode="nearest")
         #output1 = torch.cat((output1, up3), 0)
-        if output1.is_quantized:
-            output1 = torch.ops.quantized.add(output1, up2, 1.0, 0)
-        else:
-            output1.add(up2)
+        #if output1.is_quantized:
+        #    output1 = self.quant1(output1.dequantize().add(up2.dequantize()))
+        output1 = self.addq.add(output1, up2)
+        #else:
+        #    output1.add(up2)
         #output1 = output1 + up2
         output1 = self.merge1(output1)
 

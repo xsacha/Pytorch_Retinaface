@@ -12,6 +12,7 @@ from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
 import time
 import torch.quantization
+from torch.utils.mobile_optimizer import optimize_for_mobile
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
@@ -62,28 +63,7 @@ def load_model(model, pretrained_path, load_to_cpu):
     model.load_state_dict(pretrained_dict, strict=False)
     return model
 
-
-if __name__ == '__main__':
-    torch.set_grad_enabled(False)
-    # net and model
-    net = RetinaFace(phase="test")
-    net = load_model(net, args.trained_model, args.cpu)
-    net.eval()
-    print('Finished loading model!')
-    print(net)
-    cudnn.benchmark = True
-    torch.backends.quantized.engine='fbgemm'
-    device = torch.device("cpu" if args.cpu else "cuda")
-
-    #net.fuse_model()
-    # set quantization config for server (x86)
-    net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
-
-    # insert observers
-    torch.quantization.prepare(net, inplace=True)
-    # Calibrate the model and collect statistics
-
-
+def test(model, device, args):
     resize = 1
 
     # testing begin
@@ -145,7 +125,6 @@ if __name__ == '__main__':
         landms = landms[:args.keep_top_k, :]
 
         dets = np.concatenate((dets, landms), axis=1)
-
         # show image
         if args.save_image:
             for b in dets:
@@ -170,10 +149,89 @@ if __name__ == '__main__':
             name = "test.jpg"
             cv2.imwrite(name, img_raw)
 
+
+
+if __name__ == '__main__':
+    torch.set_grad_enabled(False)
+    # net and model
+    net = RetinaFace(phase="test")
+    net = load_model(net, args.trained_model, args.cpu)
+    net.eval()
+    print('Finished loading model!')
+    #print(net)
+    cudnn.benchmark = True
+    device = torch.device("cpu" if args.cpu else "cuda")
+    #test(net, device, args)
+    torch.backends.quantized.engine='fbgemm'
+
+    #net.fuse_model()
+    # set quantization config for server (x86)
+    net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+    torch.quantization.fuse_modules(net, [['body.stage1.0.0', 'body.stage1.0.1', 'body.stage1.0.2'],
+                                          ['body.stage1.1.0', 'body.stage1.1.1', 'body.stage1.1.2'],
+                                          ['body.stage1.1.3', 'body.stage1.1.4', 'body.stage1.1.5'],
+                                          ['body.stage1.2.0', 'body.stage1.2.1', 'body.stage1.2.2'],
+                                          ['body.stage1.2.3', 'body.stage1.2.4', 'body.stage1.2.5'],
+                                          ['body.stage1.3.0', 'body.stage1.3.1', 'body.stage1.3.2'],
+                                          ['body.stage1.3.3', 'body.stage1.3.4', 'body.stage1.3.5'],
+                                          ['body.stage1.4.0', 'body.stage1.4.1', 'body.stage1.4.2'],
+                                          ['body.stage1.4.3', 'body.stage1.4.4', 'body.stage1.4.5'],
+                                          ['body.stage1.5.0', 'body.stage1.5.1', 'body.stage1.5.2'],
+                                          ['body.stage1.5.3', 'body.stage1.5.4', 'body.stage1.5.5'],
+                                          ['body.stage2.0.0', 'body.stage2.0.1', 'body.stage2.0.2'],
+                                          ['body.stage2.0.3', 'body.stage2.0.4', 'body.stage2.0.5'],
+                                          ['body.stage2.1.0', 'body.stage2.1.1', 'body.stage2.1.2'],
+                                          ['body.stage2.1.3', 'body.stage2.1.4', 'body.stage2.1.5'],
+                                          ['body.stage2.2.0', 'body.stage2.2.1', 'body.stage2.2.2'],
+                                          ['body.stage2.2.3', 'body.stage2.2.4', 'body.stage2.2.5'],
+                                          ['body.stage2.3.0', 'body.stage2.3.1', 'body.stage2.3.2'],
+                                          ['body.stage2.3.3', 'body.stage2.3.4', 'body.stage2.3.5'],
+                                          ['body.stage2.4.0', 'body.stage2.4.1', 'body.stage2.4.2'],
+                                          ['body.stage2.4.3', 'body.stage2.4.4', 'body.stage2.4.5'],
+                                          ['body.stage2.5.0', 'body.stage2.5.1', 'body.stage2.5.2'],
+                                          ['body.stage2.5.3', 'body.stage2.5.4', 'body.stage2.5.5'],
+                                          ['body.stage3.0.0', 'body.stage3.0.1', 'body.stage3.0.2'],
+                                          ['body.stage3.0.3', 'body.stage3.0.4', 'body.stage3.0.5'],
+                                          ['body.stage3.1.0', 'body.stage3.1.1', 'body.stage3.1.2'],
+                                          ['body.stage3.1.3', 'body.stage3.1.4', 'body.stage3.1.5'],
+                                          ['fpn.output1.0', 'fpn.output1.1', 'fpn.output1.2'],
+                                          ['fpn.output2.0', 'fpn.output2.1', 'fpn.output2.2'],
+                                          ['fpn.output3.0', 'fpn.output3.1', 'fpn.output3.2'],
+                                          ['fpn.merge1.0', 'fpn.merge1.1', 'fpn.merge1.2'],
+                                          ['fpn.merge2.0', 'fpn.merge2.1', 'fpn.merge2.2'],
+                                          ['ssh1.conv3X3.0',   'ssh1.conv3X3.1'],
+                                          ['ssh1.conv5X5_1.0', 'ssh1.conv5X5_1.1', 'ssh1.conv5X5_1.2'],
+                                          ['ssh1.conv5X5_2.0', 'ssh1.conv5X5_2.1'],
+                                          ['ssh1.conv7X7_2.0', 'ssh1.conv7X7_2.1', 'ssh1.conv7X7_2.2'],
+                                          ['ssh1.conv7x7_3.0', 'ssh1.conv7x7_3.1'],
+                                          ['ssh2.conv3X3.0',   'ssh2.conv3X3.1'],
+                                          ['ssh2.conv5X5_1.0', 'ssh2.conv5X5_1.1', 'ssh2.conv5X5_1.2'],
+                                          ['ssh2.conv5X5_2.0', 'ssh2.conv5X5_2.1'],
+                                          ['ssh2.conv7X7_2.0', 'ssh2.conv7X7_2.1', 'ssh2.conv7X7_2.2'],
+                                          ['ssh2.conv7x7_3.0', 'ssh2.conv7x7_3.1'],
+                                          ['ssh3.conv3X3.0',   'ssh3.conv3X3.1'],
+                                          ['ssh3.conv5X5_1.0', 'ssh3.conv5X5_1.1', 'ssh3.conv5X5_1.2'],
+                                          ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
+                                          ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
+                                          ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
+                                         ], inplace=True)
+    print(net)
+
+    # insert observers
+    torch.quantization.prepare(net, inplace=True)
+    # Calibrate the model and collect statistics
+
+    #test(net, device, args)
+
+
     # convert to quantized version
     torch.quantization.convert(net, inplace=True)
 
     #net = net.to(device)
-    net = torch.jit.trace(net, torch.randn(1, 3, 1024, 768).to(device))
+    inp = torch.randn(1, 3, 1024, 768)
+    net = torch.jit.trace(net, inp.to(device))
+    #torchnet = optimize_for_mobile(net)
+
     net.save('retina.pt')
+    test(net, device, args)
 
