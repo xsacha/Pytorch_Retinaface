@@ -81,11 +81,21 @@ class FPN(nn.Module):
         output3 = self.output3(input[2])
 
         up3 = F.interpolate(output3, size=[output2.size(2), output2.size(3)], mode="nearest")
-        output2 = output2 + up3
+        #output2 = torch.cat((output2, up3), 0)
+        if output2.is_quantized:
+            output2 = torch.ops.quantized.add(output2, up3, 1.0, 0)
+        else:
+            output2.add(up3)
+        #output2 = output2 + up3
         output2 = self.merge2(output2)
 
         up2 = F.interpolate(output2, size=[output1.size(2), output1.size(3)], mode="nearest")
-        output1 = output1 + up2
+        #output1 = torch.cat((output1, up3), 0)
+        if output1.is_quantized:
+            output1 = torch.ops.quantized.add(output1, up2, 1.0, 0)
+        else:
+            output1.add(up2)
+        #output1 = output1 + up2
         output1 = self.merge1(output1)
 
         out = [output1, output2, output3]

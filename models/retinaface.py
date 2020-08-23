@@ -10,6 +10,8 @@ from models.mobilev1 import MobileNetV1 as MobileNetV1
 from models.mobilev1 import FPN as FPN
 from models.mobilev1 import SSH as SSH
 
+from torch.quantization import QuantStub, DeQuantStub
+
 
 
 class ClassHead(nn.Module):
@@ -83,6 +85,8 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head()
         self.BboxHead = self._make_bbox_head()
         self.LandmarkHead = self._make_landmark_head()
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -103,6 +107,7 @@ class RetinaFace(nn.Module):
         return landmarkhead
 
     def forward(self,inputs):
+        inputs = self.quant(inputs)
         out = self.body(inputs)
 
         # FPN
@@ -121,5 +126,8 @@ class RetinaFace(nn.Module):
         if self.phase == 'train':
             output = (bbox_regressions, classifications, ldm_regressions)
         else:
+            bbox_regressions = self.dequant(bbox_regressions)
+            classifications = self.dequant(classifications)
+            ldm_regressions = self.dequant(ldm_regressions)
             output = (bbox_regressions, F.softmax(classifications, dim=-1).select(2,1), ldm_regressions)
         return output
