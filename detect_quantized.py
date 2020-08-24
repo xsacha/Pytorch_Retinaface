@@ -218,17 +218,17 @@ if __name__ == '__main__':
     print(net)
 
     # insert observers
-    torch.quantization.prepare(net, inplace=True)
+    #torch.quantization.prepare(net, inplace=True)
     # Calibrate the model and collect statistics
 
     #test(net, device, args)
 
 
     # convert to quantized version
-    torch.quantization.convert(net, inplace=True)
+    #torch.quantization.convert(net, inplace=True)
 
     #net = net.to(device)
-    inp = torch.randn(1, 3, 1024, 768)
+    inp = torch.randn(1, 3, 540, 960)
     net = torch.jit.trace(net, inp.to(device))
     #torchnet = optimize_for_mobile(net)
 
