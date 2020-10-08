@@ -74,7 +74,7 @@ if __name__ == '__main__':
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
     net = torch.jit.trace(net, torch.randn(1, 3, 1024, 768).to(device))
-    net.save('retina.pt')
+    net.save('retina-detnas.pt')
 
     resize = 1
 
