@@ -54,10 +54,11 @@ class LandmarkHead(nn.Module):
         return out.view(out.shape[0], -1, 10)
 
 class RetinaFace(nn.Module):
-    def __init__(self, phase = 'train', net = 'detnas', return_layers = {'stage1': 1, 'stage2': 2, 'stage3': 3}):
+    def __init__(self, phase = 'train', net = 'mnet0.25', return_layers = {'stage1': 1, 'stage2': 2, 'stage3': 3}):
         super(RetinaFace,self).__init__()
         self.phase = phase
         backbone = None
+        in_channels_stage2 = 32
         if net == 'mnet0.25':
             backbone = MobileNetV1()
             if True:
@@ -74,9 +75,10 @@ class RetinaFace(nn.Module):
             checkpoint = torch.load("VOC_RetinaNet_300M.pkl", map_location=torch.device('cpu'))
             backbone.load_state_dict(checkpoint)
             return_layers = {'6': 1, '9': 2, '16': 3}
+            in_channels_stage2 = 80
+            backbone = backbone.features
 
-        self.body = _utils.IntermediateLayerGetter(backbone.features, return_layers)
-        in_channels_stage2 = 80
+        self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
         in_channels_list = [
             in_channels_stage2 * 2,
             in_channels_stage2 * 4,
@@ -91,7 +93,7 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head(inchannels=out_channels)
         self.BboxHead = self._make_bbox_head(inchannels=out_channels)
         self.LandmarkHead = self._make_landmark_head(inchannels=out_channels)
-        self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(4,4), padding=1)
+        #self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(4,4), padding=1)
         #self.quant = QuantStub()
         #self.dequant = DeQuantStub()
         #self.mean = torch.tensor([104.0, 117.0, 123.0]).view([3,1,1])
@@ -117,7 +119,7 @@ class RetinaFace(nn.Module):
     def forward(self,inputs):
         #inputs.sub_(self.mean)
         #inputs = self.quant(inputs)
-        out = self.body(self.lin(inputs))
+        out = self.body(inputs)
 
         # FPN
         fpn = self.fpn(out)

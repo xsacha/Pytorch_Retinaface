@@ -14,6 +14,7 @@ import time
 import torch.quantization
 from torch.utils.mobile_optimizer import optimize_for_mobile
 from torch.utils import mkldnn
+from torch.cuda.amp import autocast
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
@@ -21,6 +22,8 @@ parser.add_argument('-m', '--trained_model', default='./weights/Final_Retinaface
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--mkl', action="store_true", default=False, help='Use mkldnn inference')
+parser.add_argument('--amp', action="store_true", default=False, help='Use AMP inference')
+parser.add_argument('--mobile', action="store_true", default=False, help='Optimise for mobile')
 parser.add_argument('--confidence_threshold', default=0.05, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
 parser.add_argument('--nms_threshold', default=0.3, type=float, help='nms_threshold')
@@ -83,6 +86,8 @@ def test(model, device, args):
         img = img.to(device)
         if args.mkl:
             img = img.to_mkldnn()
+        #if args.amp:
+        #    img = img.half()
         scale = scale.to(device)
 
         tic = time.time()
@@ -158,7 +163,7 @@ def test(model, device, args):
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
     # net and model
-    net = RetinaFace(phase="test")
+    net = RetinaFace(phase="test", net="mnet0.25")
     net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
@@ -166,11 +171,12 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
     #test(net, device, args)
-    torch.backends.quantized.engine='fbgemm'
+    #torch.backends.quantized.engine='fbgemm'
 
     #net.fuse_model()
     # set quantization config for server (x86)
-    net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+    #net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+    ''' 
     torch.quantization.fuse_modules(net, [
         ['body.0.conv.0.interstellar1a_shufflenet_5x5_branch2a',   'body.0.conv.0.bn1a_shufflenet_5x5_branch2a', 'body.0.conv.0.relu1a_shufflenet_5x5_branch2a'],
         ['body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s', 'body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s_bn'],
@@ -275,10 +281,59 @@ if __name__ == '__main__':
         ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
         ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
         ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
-
-
+        ], inplace=True)
+    '''
+    #'''
+    torch.quantization.fuse_modules(net, [['body.stage1.0.0', 'body.stage1.0.1', 'body.stage1.0.2'],
+                                          ['body.stage1.1.0', 'body.stage1.1.1', 'body.stage1.1.2'],
+                                          ['body.stage1.1.3', 'body.stage1.1.4', 'body.stage1.1.5'],
+                                          ['body.stage1.2.0', 'body.stage1.2.1', 'body.stage1.2.2'],
+                                          ['body.stage1.2.3', 'body.stage1.2.4', 'body.stage1.2.5'],
+                                          ['body.stage1.3.0', 'body.stage1.3.1', 'body.stage1.3.2'],
+                                          ['body.stage1.3.3', 'body.stage1.3.4', 'body.stage1.3.5'],
+                                          ['body.stage1.4.0', 'body.stage1.4.1', 'body.stage1.4.2'],
+                                          ['body.stage1.4.3', 'body.stage1.4.4', 'body.stage1.4.5'],
+                                          ['body.stage1.5.0', 'body.stage1.5.1', 'body.stage1.5.2'],
+                                          ['body.stage1.5.3', 'body.stage1.5.4', 'body.stage1.5.5'],
+                                          ['body.stage2.0.0', 'body.stage2.0.1', 'body.stage2.0.2'],
+                                          ['body.stage2.0.3', 'body.stage2.0.4', 'body.stage2.0.5'],
+                                          ['body.stage2.1.0', 'body.stage2.1.1', 'body.stage2.1.2'],
+                                          ['body.stage2.1.3', 'body.stage2.1.4', 'body.stage2.1.5'],
+                                          ['body.stage2.2.0', 'body.stage2.2.1', 'body.stage2.2.2'],
+                                          ['body.stage2.2.3', 'body.stage2.2.4', 'body.stage2.2.5'],
+                                          ['body.stage2.3.0', 'body.stage2.3.1', 'body.stage2.3.2'],
+                                          ['body.stage2.3.3', 'body.stage2.3.4', 'body.stage2.3.5'],
+                                          ['body.stage2.4.0', 'body.stage2.4.1', 'body.stage2.4.2'],
+                                          ['body.stage2.4.3', 'body.stage2.4.4', 'body.stage2.4.5'],
+                                          ['body.stage2.5.0', 'body.stage2.5.1', 'body.stage2.5.2'],
+                                          ['body.stage2.5.3', 'body.stage2.5.4', 'body.stage2.5.5'],
+                                          ['body.stage3.0.0', 'body.stage3.0.1', 'body.stage3.0.2'],
+                                          ['body.stage3.0.3', 'body.stage3.0.4', 'body.stage3.0.5'],
+                                          ['body.stage3.1.0', 'body.stage3.1.1', 'body.stage3.1.2'],
+                                          ['body.stage3.1.3', 'body.stage3.1.4', 'body.stage3.1.5'],
+                                          ['fpn.output1.0', 'fpn.output1.1', 'fpn.output1.2'],
+                                          ['fpn.output2.0', 'fpn.output2.1', 'fpn.output2.2'],
+                                          ['fpn.output3.0', 'fpn.output3.1', 'fpn.output3.2'],
+                                          ['fpn.merge1.0', 'fpn.merge1.1', 'fpn.merge1.2'],
+                                          ['fpn.merge2.0', 'fpn.merge2.1', 'fpn.merge2.2'],
+                                          ['ssh1.conv3X3.0',   'ssh1.conv3X3.1'],
+                                          ['ssh1.conv5X5_1.0', 'ssh1.conv5X5_1.1', 'ssh1.conv5X5_1.2'],
+                                          ['ssh1.conv5X5_2.0', 'ssh1.conv5X5_2.1'],
+                                          ['ssh1.conv7X7_2.0', 'ssh1.conv7X7_2.1', 'ssh1.conv7X7_2.2'],
+                                          ['ssh1.conv7x7_3.0', 'ssh1.conv7x7_3.1'],
+                                          ['ssh2.conv3X3.0',   'ssh2.conv3X3.1'],
+                                          ['ssh2.conv5X5_1.0', 'ssh2.conv5X5_1.1', 'ssh2.conv5X5_1.2'],
+                                          ['ssh2.conv5X5_2.0', 'ssh2.conv5X5_2.1'],
+                                          ['ssh2.conv7X7_2.0', 'ssh2.conv7X7_2.1', 'ssh2.conv7X7_2.2'],
+                                          ['ssh2.conv7x7_3.0', 'ssh2.conv7x7_3.1'],
+                                          ['ssh3.conv3X3.0',   'ssh3.conv3X3.1'],
+                                          ['ssh3.conv5X5_1.0', 'ssh3.conv5X5_1.1', 'ssh3.conv5X5_1.2'],
+                                          ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
+                                          ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
+                                          ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
                                           
                                          ], inplace=True)
+    #'''
     print(net)
 
     # insert observers
@@ -293,12 +348,20 @@ if __name__ == '__main__':
 
     #net = net.to(device)
     inp = torch.randn(1, 3, 540, 960).to(device)
+    net = net.to(device)
     if args.mkl:
         net = mkldnn.to_mkldnn(net)
         inp = inp.to_mkldnn()
-    net = torch.jit.trace(net, inp)
-    #torchnet = optimize_for_mobile(net)
+    #if args.amp:
+    #    inp = inp.half()
+    with autocast(args.amp):
+        net = torch.jit.trace(net, inp, check_trace=False)
 
-    net.save('retina-detnas_fuse-mkl.pt')
-    test(net, device, args)
+    if args.mobile:
+        torchnet = optimize_for_mobile(net)
+        torchnet.save('retina-mbnet_amp.pt')
+        test(torchnet, device, args)
+    else:
+        net.save('retina-mbnet_amp.pt')
+        test(net, device, args)
 
