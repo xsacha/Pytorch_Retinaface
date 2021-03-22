@@ -32,7 +32,7 @@ args = parser.parse_args()
 if not os.path.exists(args.save_folder):
     os.mkdir(args.save_folder)
 
-rgb_mean = (104, 117, 123) # bgr order
+#rgb_mean = (104, 117, 123) # bgr order
 num_classes = 2
 img_dim = args.img_dim
 num_gpu = args.ngpu
@@ -86,7 +86,7 @@ def train():
     epoch = 0 + args.resume_epoch
     print('Loading Dataset...')
 
-    dataset = WiderFaceDetection( training_dataset,preproc(img_dim, rgb_mean))
+    dataset = WiderFaceDetection( training_dataset,preproc(img_dim))
 
     epoch_size = math.ceil(len(dataset) / batch_size)
     max_iter = max_epoch * epoch_size

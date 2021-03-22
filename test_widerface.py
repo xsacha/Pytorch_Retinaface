@@ -92,6 +92,7 @@ if __name__ == '__main__':
     for i, img_name in enumerate(test_dataset):
         image_path = testset_folder + img_name
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
         img = np.float32(img_raw)
 
         # testing scale

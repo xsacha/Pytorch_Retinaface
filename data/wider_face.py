@@ -39,6 +39,7 @@ class WiderFaceDetection(data.Dataset):
 
     def __getitem__(self, index):
         img = cv2.imread(self.imgs_path[index])
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         height, width, _ = img.shape
 
         labels = self.words[index]

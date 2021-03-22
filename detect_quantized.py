@@ -75,6 +75,7 @@ def test(model, device, args):
     for i in range(100):
         image_path = "./curve/test.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
 
         img = np.float32(img_raw)
 
