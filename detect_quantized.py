@@ -18,7 +18,7 @@ from torch.cuda.amp import autocast
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Final_Retinaface.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/Retinaface_detnas60.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--mkl', action="store_true", default=False, help='Use mkldnn inference')
@@ -81,14 +81,15 @@ def test(model, device, args):
 
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
-        img -= (104, 117, 123)
+        img -= 127.5#(104, 117, 123)
+        img /= 127.5
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).unsqueeze(0)
         img = img.to(device)
         if args.mkl:
             img = img.to_mkldnn()
-        #if args.amp:
-        #    img = img.half()
+        if args.amp:
+            img = img.half()
         scale = scale.to(device)
 
         tic = time.time()
@@ -164,7 +165,7 @@ def test(model, device, args):
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
     # net and model
-    net = RetinaFace(phase="test", net="mnet0.25")
+    net = RetinaFace(phase="test", net="detnas")
     net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
@@ -177,7 +178,7 @@ if __name__ == '__main__':
     #net.fuse_model()
     # set quantization config for server (x86)
     #net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
-    ''' 
+     
     torch.quantization.fuse_modules(net, [
         ['body.0.conv.0.interstellar1a_shufflenet_5x5_branch2a',   'body.0.conv.0.bn1a_shufflenet_5x5_branch2a', 'body.0.conv.0.relu1a_shufflenet_5x5_branch2a'],
         ['body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s', 'body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s_bn'],
@@ -283,8 +284,8 @@ if __name__ == '__main__':
         ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
         ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
         ], inplace=True)
+    
     '''
-    #'''
     torch.quantization.fuse_modules(net, [['body.stage1.0.0', 'body.stage1.0.1', 'body.stage1.0.2'],
                                           ['body.stage1.1.0', 'body.stage1.1.1', 'body.stage1.1.2'],
                                           ['body.stage1.1.3', 'body.stage1.1.4', 'body.stage1.1.5'],
@@ -334,7 +335,7 @@ if __name__ == '__main__':
                                           ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
                                           
                                          ], inplace=True)
-    #'''
+    '''
     print(net)
 
     # insert observers
@@ -348,21 +349,25 @@ if __name__ == '__main__':
     #torch.quantization.convert(net, inplace=True)
 
     #net = net.to(device)
-    inp = torch.randn(1, 3, 540, 960).to(device)
+    inp = torch.randn(1, 3, 480, 640).to(device)
     net = net.to(device)
     if args.mkl:
         net = mkldnn.to_mkldnn(net)
         inp = inp.to_mkldnn()
-    #if args.amp:
-    #    inp = inp.half()
+    if args.amp:
+        #net.half()
+        inp = inp.half()
+    net.eval()
     with autocast(args.amp):
         net = torch.jit.trace(net, inp, check_trace=False)
+    #if not args.mkl:
+    #    net = torch.jit.freeze(net)
 
     if args.mobile:
         torchnet = optimize_for_mobile(net)
-        torchnet.save('retina-mbnet_amp.pt')
+        torchnet.save('retina-detnas_mobile.pt')
         test(torchnet, device, args)
     else:
-        net.save('retina-mbnet_amp.pt')
+        net.save('retina-detnas_amp.pt')
         test(net, device, args)
 

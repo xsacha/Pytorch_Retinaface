@@ -198,7 +198,7 @@ def _resize_subtract_mean(image, insize):
     interp_method = interp_methods[random.randrange(5)]
     image = cv2.resize(image, (insize, insize), interpolation=interp_method)
     image = image.astype(np.float32)
-    image -= 127.5.
+    image -= 127.5
     image /= 127.5
     #image -= rgb_mean
     return image.transpose(2, 0, 1)

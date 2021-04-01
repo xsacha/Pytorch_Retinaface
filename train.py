@@ -11,6 +11,7 @@ from layers.functions.prior_box import PriorBox
 import time
 import datetime
 import math
+import gc
 from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
@@ -18,7 +19,7 @@ parser.add_argument('--training_dataset', default='./data/widerface/train/label.
 parser.add_argument('-b', '--batch_size', default=32, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--ngpu', default=1, type=int, help='gpus')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
+parser.add_argument('--lr', '--learning-rate', default=2e-2, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
@@ -26,7 +27,7 @@ parser.add_argument('-max', '--max_epoch', default=300, type=int, help='max epoc
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
-parser.add_argument('--img_dim', default=640, help='Input shape when training')
+parser.add_argument('--img_dim', default=1024, help='Input shape when training')
 args = parser.parse_args()
 
 if not os.path.exists(args.save_folder):
@@ -47,7 +48,7 @@ training_dataset = args.training_dataset
 save_folder = args.save_folder
 gpu_train = cfg['gpu_train']
 
-net = RetinaFace()
+net = RetinaFace(net='detnas')
 print("Printing net...")
 print(net)
 
@@ -72,6 +73,7 @@ if num_gpu > 1 and gpu_train:
 device = torch.device('cuda:0' if gpu_train else 'cpu')
 cudnn.benchmark = True
 net = net.to(device)
+scaler = torch.cuda.amp.GradScaler()
 
 optimizer = optim.SGD(net.parameters(), lr=initial_lr, momentum=momentum, weight_decay=weight_decay)
 criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
@@ -98,6 +100,8 @@ def train():
         start_iter = args.resume_epoch * epoch_size
     else:
         start_iter = 0
+    gc.collect()
+    torch.cuda.empty_cache()
 
     for iteration in range(start_iter, max_iter):
         if iteration % epoch_size == 0:
@@ -116,16 +120,17 @@ def train():
         images, targets = next(batch_iterator)
         images = images.to(device)
         targets = [anno.to(device) for anno in targets]
-
-        # forward
-        out = net(images)
-
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c, loss_landm = criterion(out, priors, targets)
-        loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
-        loss.backward()
-        optimizer.step()
+
+        # forward
+        with torch.cuda.amp.autocast():
+            out = net(images)
+            loss_l, loss_c, loss_landm = criterion(out, priors, targets)
+            loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         load_t1 = time.time()
         batch_time = load_t1 - load_t0
         eta = int(batch_time * (max_iter - iteration))

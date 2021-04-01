@@ -67,7 +67,7 @@ def load_model(model, pretrained_path, load_to_cpu):
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
     # net and model
-    net = RetinaFace(phase="test")
+    net = RetinaFace(net='detnas',phase="test")
     net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
@@ -83,8 +83,8 @@ if __name__ == '__main__':
     fw = open(os.path.join(args.save_folder, args.dataset + '_dets.txt'), 'w')
 
     # testing dataset
-    testset_folder = os.path.join('/d/dev/FaceBoxes.PyTorch/modelgen/data', args.dataset, 'images/')
-    testset_list = os.path.join('/d/dev/FaceBoxes.PyTorch/modelgen/data', args.dataset, 'img_list.txt')
+    testset_folder = os.path.join('/d/dev/Pytorch_Retinaface/modelgen/data', args.dataset, 'images/')
+    testset_list = os.path.join('/d/dev/Pytorch_Retinaface/modelgen/data', args.dataset, 'img_list.txt')
     with open(testset_list, 'r') as fr:
         test_dataset = fr.read().split()
     num_images = len(test_dataset)
@@ -107,7 +107,8 @@ if __name__ == '__main__':
 
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
-        img -= (104, 117, 123)
+        img -= 127.5
+        img /= 127.5
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).unsqueeze(0)
         img = img.to(device)

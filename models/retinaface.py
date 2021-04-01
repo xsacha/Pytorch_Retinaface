@@ -13,6 +13,7 @@ from models.detnas.network import ShuffleNetV2DetNAS
 
 from torch.quantization import QuantStub, DeQuantStub
 
+import timm
 
 
 class ClassHead(nn.Module):
@@ -58,7 +59,7 @@ class RetinaFace(nn.Module):
         super(RetinaFace,self).__init__()
         self.phase = phase
         backbone = None
-        in_channels_stage2 = 32
+        in_channels_list = [ 64, 128, 256]
         if net == 'mnet0.25':
             backbone = MobileNetV1()
             if True:
@@ -70,20 +71,19 @@ class RetinaFace(nn.Module):
                     new_state_dict[name] = v
                 # load params
                 backbone.load_state_dict(new_state_dict)
+            self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
         elif net == 'detnas':
             backbone = ShuffleNetV2DetNAS(model_size='VOC_RetinaNet_300M')
             checkpoint = torch.load("VOC_RetinaNet_300M.pkl", map_location=torch.device('cpu'))
             backbone.load_state_dict(checkpoint)
             return_layers = {'6': 1, '9': 2, '16': 3}
-            in_channels_stage2 = 80
             backbone = backbone.features
+            self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
+            in_channels_list = [ 160, 320, 640 ]
+        elif net == 'mnet2':
+            self.body = timm.create_model('mobilenetv2_100', pretrained=True, features_only=True, out_indices=(0,1,2))
+            in_channels_list = [ 16, 24, 32 ]
 
-        self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
-        in_channels_list = [
-            in_channels_stage2 * 2,
-            in_channels_stage2 * 4,
-            in_channels_stage2 * 8,
-        ]
         out_channels = in_channels_list[0]
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
@@ -93,10 +93,7 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head(inchannels=out_channels)
         self.BboxHead = self._make_bbox_head(inchannels=out_channels)
         self.LandmarkHead = self._make_landmark_head(inchannels=out_channels)
-        #self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(4,4), padding=1)
-        #self.quant = QuantStub()
-        #self.dequant = DeQuantStub()
-        #self.mean = torch.tensor([104.0, 117.0, 123.0]).view([3,1,1])
+        #self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(2,2), padding=1)
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -117,11 +114,10 @@ class RetinaFace(nn.Module):
         return landmarkhead
 
     def forward(self,inputs):
-        #inputs.sub_(self.mean)
-        #inputs = self.quant(inputs)
-        out = self.body(inputs)
+        out = self.body(inputs)#self.lin(inputs))
 
         # FPN
+        print(out)
         fpn = self.fpn(out)
 
         # SSH
