@@ -100,7 +100,7 @@ if __name__ == '__main__':
         img = np.float32(img_raw)
         resize = 1
         resizedelta = 0.25
-        while img.shape[0] * resize < (640.0 * (1 - resizedelta / 2) ):
+        while img.shape[0] * resize < (1024.0 * (1 - resizedelta / 2) ):
             resize += resizedelta
         if resize != 1:
             img = cv2.resize(img, None, None, fx=resize, fy=resize, interpolation=cv2.INTER_LINEAR)

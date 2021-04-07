@@ -93,7 +93,7 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head(inchannels=out_channels)
         self.BboxHead = self._make_bbox_head(inchannels=out_channels)
         self.LandmarkHead = self._make_landmark_head(inchannels=out_channels)
-        #self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(2,2), padding=1)
+        self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(4,4), padding=1)
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -114,10 +114,9 @@ class RetinaFace(nn.Module):
         return landmarkhead
 
     def forward(self,inputs):
-        out = self.body(inputs)#self.lin(inputs))
+        out = self.body(self.lin(inputs))
 
         # FPN
-        print(out)
         fpn = self.fpn(out)
 
         # SSH

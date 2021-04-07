@@ -93,7 +93,7 @@ def _distort(image):
         if random.randrange(2):
             _convert(image, alpha=random.uniform(0.5, 1.5))
 
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
         #saturation distortion
         if random.randrange(2):
@@ -105,7 +105,7 @@ def _distort(image):
             tmp %= 180
             image[:, :, 0] = tmp
 
-        image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+        image = cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
 
     else:
 
@@ -113,7 +113,7 @@ def _distort(image):
         if random.randrange(2):
             _convert(image, beta=random.uniform(-32, 32))
 
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
         #saturation distortion
         if random.randrange(2):
@@ -125,7 +125,7 @@ def _distort(image):
             tmp %= 180
             image[:, :, 0] = tmp
 
-        image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+        image = cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
 
         #contrast distortion
         if random.randrange(2):

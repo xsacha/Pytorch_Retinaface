@@ -349,7 +349,7 @@ if __name__ == '__main__':
     #torch.quantization.convert(net, inplace=True)
 
     #net = net.to(device)
-    inp = torch.randn(1, 3, 480, 640).to(device)
+    inp = torch.randn(1, 3, 768, 1024).to(device)
     net = net.to(device)
     if args.mkl:
         net = mkldnn.to_mkldnn(net)
@@ -360,8 +360,8 @@ if __name__ == '__main__':
     net.eval()
     with autocast(args.amp):
         net = torch.jit.trace(net, inp, check_trace=False)
-    #if not args.mkl:
-    #    net = torch.jit.freeze(net)
+    if not args.mkl:
+        net = torch.jit.freeze(net)
 
     if args.mobile:
         torchnet = optimize_for_mobile(net)

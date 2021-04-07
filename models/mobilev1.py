@@ -75,8 +75,8 @@ class FPN(nn.Module):
         #self.addq = torch.nn.quantized.FloatFunctional() 
 
     def forward(self, input):
-        #names = list(input.keys())
-        #input = list(input.values())
+        names = list(input.keys())
+        input = list(input.values())
 
         output1 = self.output1(input[0])
         output2 = self.output2(input[1])
