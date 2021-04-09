@@ -5,6 +5,7 @@ import torchvision.models.resnet as resnet
 import torchvision.models._utils as _utils
 import torch.nn.functional as F
 from collections import OrderedDict
+from torch.utils import mkldnn as mkldnn_utils
 
 from models.mobilev1 import MobileNetV1 as MobileNetV1
 from models.mobilev1 import FPN as FPN
@@ -93,7 +94,7 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head(inchannels=out_channels)
         self.BboxHead = self._make_bbox_head(inchannels=out_channels)
         self.LandmarkHead = self._make_landmark_head(inchannels=out_channels)
-        self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(4,4), padding=1)
+        self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(2,2), padding=1)
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -113,11 +114,48 @@ class RetinaFace(nn.Module):
             landmarkhead.append(LandmarkHead(inchannels,anchor_num))
         return landmarkhead
 
+    def activate_mkldnn(self, inplace=True):
+         # convert to mkldnn
+         self.body.eval()
+         self.ssh1.eval()
+         self.ssh2.eval()
+         self.ssh3.eval()
+         self.ClassHead.eval()
+         self.BboxHead.eval()
+         self.LandmarkHead.eval()
+         if inplace:
+             self.body = mkldnn_utils.to_mkldnn(self.body)
+             self.ssh1 = mkldnn_utils.to_mkldnn(self.ssh1)
+             self.ssh2 = mkldnn_utils.to_mkldnn(self.ssh2)
+             self.ssh3 = mkldnn_utils.to_mkldnn(self.ssh3)
+             self.lin = mkldnn_utils.to_mkldnn(self.lin)
+             #self.ClassHead = mkldnn_utils.to_mkldnn(self.ClassHead)
+             #self.BboxHead = mkldnn_utils.to_mkldnn(self.BboxHead)
+             #self.LandmarkHead = mkldnn_utils.to_mkldnn(self.LandmarkHead)
+         else:
+             self.body_mkl = mkldnn_utils.to_mkldnn(self.body)
+             self.ssh1_mkl = mkldnn_utils.to_mkldnn(self.ssh1)
+             self.ssh2_mkl = mkldnn_utils.to_mkldnn(self.ssh2)
+             self.ssh3_mkl = mkldnn_utils.to_mkldnn(self.ssh3)
+             self.ClassHead_mkl = mkldnn_utils.to_mkldnn(self.ClassHead)
+             self.BboxHead_mkl = mkldnn_utils.to_mkldnn(self.BboxHead)
+             self.LandmarkHead_mkl = mkldnn_utils.to_mkldnn(self.LandmarkHead)
+
+             return self.body_mkl, self.ssh1_mkl, self.ssh2_mkl, self.ssh3_mkl,\
+                    self.ClassHead_mkl, self.BboxHead_mkl, self.LandmarkHead_mkl
+
     def forward(self,inputs):
         out = self.body(self.lin(inputs))
+        if inputs.is_mkldnn:
+            for k, v in out.items():
+                out[k] = v.to_dense()
 
         # FPN
         fpn = self.fpn(out)
+
+        if inputs.is_mkldnn:
+            for i in range(len(fpn)):
+                fpn[i] = fpn[i].to_mkldnn()
 
         # SSH
         feature1 = self.ssh1(fpn[0])

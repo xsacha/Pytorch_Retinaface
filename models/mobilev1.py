@@ -59,7 +59,10 @@ class SSH(nn.Module):
         conv7X7_2 = self.conv7X7_2(conv5X5_1)
         conv7X7 = self.conv7x7_3(conv7X7_2)
 
-        out = torch.cat([conv3X3, conv5X5, conv7X7], dim=1)
+        if input.is_mkldnn:
+            out = torch.cat([conv3X3.to_dense(), conv5X5.to_dense(), conv7X7.to_dense()], dim=1)
+        else:
+            out = torch.cat([conv3X3, conv5X5, conv7X7], dim=1)
         out = F.relu(out)
         return out
 

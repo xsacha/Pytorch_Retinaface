@@ -16,10 +16,10 @@ from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
-parser.add_argument('-b', '--batch_size', default=32, type=int, help='Batch size for training')
+parser.add_argument('-b', '--batch_size', default=16, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--ngpu', default=1, type=int, help='gpus')
-parser.add_argument('--lr', '--learning-rate', default=2e-3, type=float, help='initial learning rate')
+parser.add_argument('--lr', '--learning-rate', default=2e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
@@ -27,7 +27,7 @@ parser.add_argument('-max', '--max_epoch', default=300, type=int, help='max epoc
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
-parser.add_argument('--img_dim', default=1280, help='Input shape when training')
+parser.add_argument('--img_dim', default=640, help='Input shape when training')
 args = parser.parse_args()
 
 if not os.path.exists(args.save_folder):

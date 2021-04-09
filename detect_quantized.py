@@ -18,7 +18,7 @@ from torch.cuda.amp import autocast
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Retinaface_detnas60.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/DetNas1024.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--mkl', action="store_true", default=False, help='Use mkldnn inference')
@@ -351,8 +351,10 @@ if __name__ == '__main__':
     #net = net.to(device)
     inp = torch.randn(1, 3, 768, 1024).to(device)
     net = net.to(device)
+    net.eval()
     if args.mkl:
-        net = mkldnn.to_mkldnn(net)
+        #net = mkldnn.to_mkldnn(net)
+        net.activate_mkldnn()
         inp = inp.to_mkldnn()
     if args.amp:
         #net.half()
@@ -368,6 +370,12 @@ if __name__ == '__main__':
         torchnet.save('retina-detnas_mobile.pt')
         test(torchnet, device, args)
     else:
-        net.save('retina-detnas_amp.pt')
+        if args.amp:
+            net.save('retina-detnas_opt_amp.pt')
+        elif args.mkl:
+            net.save('retina-detnas_opt_mkl.pt')
+        else:
+            net.save('retina-detnas_opt.pt')
+
         test(net, device, args)
 
