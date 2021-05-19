@@ -14,7 +14,7 @@ from utils.timer import Timer
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Final_Retinaface.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/DetNas1024.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--save_folder', default='eval/', type=str, help='Dir to save results')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
@@ -66,15 +66,16 @@ def load_model(model, pretrained_path, load_to_cpu):
 
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
+    device = torch.device("cpu" if args.cpu else "cuda")
     # net and model
-    net = RetinaFace(net='detnas',phase="test")
+    net = RetinaFace(net='regnetx',phase="test")
     net = load_model(net, args.trained_model, args.cpu)
+    net = net.to(device)
+    #net = torch.jit.load(args.trained_model)
     net.eval()
     print('Finished loading model!')
     print(net)
     cudnn.benchmark = True
-    device = torch.device("cpu" if args.cpu else "cuda")
-    net = net.to(device)
 
 
     # save file
@@ -100,7 +101,8 @@ if __name__ == '__main__':
         img = np.float32(img_raw)
         resize = 1
         resizedelta = 0.25
-        while img.shape[0] * resize < (1024.0 * (1 - resizedelta / 2) ):
+        #maxdim = max(img.shape[0], img.shape[1])
+        while resize * img.shape[0] < (640.0 * (1 - resizedelta / 2) ):
             resize += resizedelta
         if resize != 1:
             img = cv2.resize(img, None, None, fx=resize, fy=resize, interpolation=cv2.INTER_LINEAR)

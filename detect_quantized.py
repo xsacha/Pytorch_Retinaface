@@ -2,6 +2,7 @@ from __future__ import print_function
 import os
 import argparse
 import torch
+import copy
 import torch.backends.cudnn as cudnn
 import numpy as np
 from data import cfg
@@ -18,11 +19,12 @@ from torch.cuda.amp import autocast
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/DetNas1024.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/RegNetX.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--mkl', action="store_true", default=False, help='Use mkldnn inference')
 parser.add_argument('--amp', action="store_true", default=False, help='Use AMP inference')
+parser.add_argument('--cl', action="store_true", default=False, help='Use Channels last inference')
 parser.add_argument('--mobile', action="store_true", default=False, help='Optimise for mobile')
 parser.add_argument('--confidence_threshold', default=0.05, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
@@ -68,11 +70,11 @@ def load_model(model, pretrained_path, load_to_cpu):
     model.load_state_dict(pretrained_dict, strict=False)
     return model
 
-def test(model, device, args):
+def test(model, device, args, runs=100):
     resize = 1
 
     # testing begin
-    for i in range(100):
+    for i in range(runs):
         image_path = "./curve/test.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
         img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
@@ -86,6 +88,8 @@ def test(model, device, args):
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).unsqueeze(0)
         img = img.to(device)
+        if args.cl:
+            img = img.contiguous(memory_format=torch.channels_last)
         if args.mkl:
             img = img.to_mkldnn()
         if args.amp:
@@ -95,7 +99,6 @@ def test(model, device, args):
         tic = time.time()
         loc, conf, landms = net(img)  # forward pass
         print('net forward time: {:.4f}'.format(time.time() - tic))
-
         priorbox = PriorBox(cfg, image_size=(im_height, im_width))
         priors = priorbox.forward()
         priors = priors.to(device)
@@ -165,20 +168,94 @@ def test(model, device, args):
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
     # net and model
-    net = RetinaFace(phase="test", net="detnas")
+    net = RetinaFace(phase="test", net="regnety")
     net = load_model(net, args.trained_model, args.cpu)
-    net.eval()
     print('Finished loading model!')
     #print(net)
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
+    net = net.to(device)
+    net.eval()
     #test(net, device, args)
     #torch.backends.quantized.engine='fbgemm'
 
     #net.fuse_model()
     # set quantization config for server (x86)
-    #net.qconfig = torch.quantization.get_default_qconfig('fbgemm')
-     
+    #net.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+
+    # Fuse Retinaface
+    
+    torch.quantization.fuse_modules(net, [
+        ['fpn.output1.0', 'fpn.output1.1', 'fpn.output1.2'],
+        ['fpn.output2.0', 'fpn.output2.1', 'fpn.output2.2'],
+        ['fpn.output3.0', 'fpn.output3.1', 'fpn.output3.2'],
+        ['fpn.merge1.0', 'fpn.merge1.1', 'fpn.merge1.2'],
+        ['fpn.merge2.0', 'fpn.merge2.1', 'fpn.merge2.2'],
+        ['ssh1.conv3X3.0',   'ssh1.conv3X3.1'],
+        ['ssh1.conv5X5_1.0', 'ssh1.conv5X5_1.1', 'ssh1.conv5X5_1.2'],
+        ['ssh1.conv5X5_2.0', 'ssh1.conv5X5_2.1'],
+        ['ssh1.conv7X7_2.0', 'ssh1.conv7X7_2.1', 'ssh1.conv7X7_2.2'],
+        ['ssh1.conv7x7_3.0', 'ssh1.conv7x7_3.1'],
+        ['ssh2.conv3X3.0',   'ssh2.conv3X3.1'],
+        ['ssh2.conv5X5_1.0', 'ssh2.conv5X5_1.1', 'ssh2.conv5X5_1.2'],
+        ['ssh2.conv5X5_2.0', 'ssh2.conv5X5_2.1'],
+        ['ssh2.conv7X7_2.0', 'ssh2.conv7X7_2.1', 'ssh2.conv7X7_2.2'],
+        ['ssh2.conv7x7_3.0', 'ssh2.conv7x7_3.1'],
+        ['ssh3.conv3X3.0',   'ssh3.conv3X3.1'],
+        ['ssh3.conv5X5_1.0', 'ssh3.conv5X5_1.1', 'ssh3.conv5X5_1.2'],
+        ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
+        ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
+        ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
+        ], inplace=True)
+
+    torch.quantization.fuse_modules(net, [
+        ['body.conv1', 'body.bn1', 'body.relu'],
+        ['body.layer1.0.conv1', 'body.layer1.0.bn1'],
+        ['body.layer1.0.conv2', 'body.layer1.0.bn2'],
+        ['body.layer1.0.conv3', 'body.layer1.0.bn3'], # 'body.layer1.0.relu'],
+        ['body.layer1.0.downsample.0', 'body.layer1.0.downsample.1'],
+        ['body.layer2.0.conv1', 'body.layer2.0.bn1'],
+        ['body.layer2.0.conv2', 'body.layer2.0.bn2'],
+        ['body.layer2.0.conv3', 'body.layer2.0.bn3'], #, 'body.layer2.0.relu'],
+        ['body.layer2.0.downsample.0', 'body.layer2.0.downsample.1'],
+        ['body.layer2.1.conv1', 'body.layer2.1.bn1'],
+        ['body.layer2.1.conv2', 'body.layer2.1.bn2'],
+        ['body.layer2.1.conv3', 'body.layer2.1.bn3'], #, 'body.layer2.1.relu'],
+        ['body.layer3.0.conv1', 'body.layer3.0.bn1'],
+        ['body.layer3.0.conv2', 'body.layer3.0.bn2'],
+        ['body.layer3.0.conv3', 'body.layer3.0.bn3'], #, 'body.layer3.0.relu'],
+        ['body.layer3.0.downsample.0', 'body.layer3.0.downsample.1'],
+        ['body.layer3.1.conv1', 'body.layer3.1.bn1'],
+        ['body.layer3.1.conv2', 'body.layer3.1.bn2'],
+        ['body.layer3.1.conv3', 'body.layer3.1.bn3'], #, 'body.layer3.1.relu'],
+        ['body.layer3.2.conv1', 'body.layer3.2.bn1'],
+        ['body.layer3.2.conv2', 'body.layer3.2.bn2'],
+        ['body.layer3.2.conv3', 'body.layer3.2.bn3'], #, 'body.layer3.2.relu'],
+        ['body.layer3.3.conv1', 'body.layer3.3.bn1'],
+        ['body.layer3.3.conv2', 'body.layer3.3.bn2'],
+        ['body.layer3.3.conv3', 'body.layer3.3.bn3'], #, 'body.layer3.3.relu'],
+        ['body.layer3.4.conv1', 'body.layer3.4.bn1'],
+        ['body.layer3.4.conv2', 'body.layer3.4.bn2'],
+        ['body.layer3.4.conv3', 'body.layer3.4.bn3'], #, 'body.layer3.4.relu'],
+        ['body.layer3.5.conv1', 'body.layer3.5.bn1'],
+        ['body.layer3.5.conv2', 'body.layer3.5.bn2'],
+        ['body.layer3.5.conv3', 'body.layer3.5.bn3'], #, 'body.layer3.5.relu'],
+        ['body.layer3.6.conv1', 'body.layer3.6.bn1'],
+        ['body.layer3.6.conv2', 'body.layer3.6.bn2'],
+        ['body.layer3.6.conv3', 'body.layer3.6.bn3'], #, 'body.layer3.6.relu'],
+    ], inplace=True)
+    
+    '''
+    torch.quantization.fuse_modules(net, [
+        ['body.s1.b1.se.fc1', 'body.s1.b1.se.act'],
+        ['body.s2.b1.se.fc1', 'body.s2.b1.se.act'],
+        ['body.s3.b1.se.fc1', 'body.s3.b1.se.act'],
+        ['body.s3.b2.se.fc1', 'body.s3.b2.se.act'],
+        ['body.s3.b3.se.fc1', 'body.s3.b3.se.act'],
+        ['body.s3.b4.se.fc1', 'body.s3.b4.se.act'],
+        ], inplace=True)
+    '''
+    ''' 
     torch.quantization.fuse_modules(net, [
         ['body.0.conv.0.interstellar1a_shufflenet_5x5_branch2a',   'body.0.conv.0.bn1a_shufflenet_5x5_branch2a', 'body.0.conv.0.relu1a_shufflenet_5x5_branch2a'],
         ['body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s', 'body.0.conv.1.interstellar1a_shufflenet_5x5_branch2b_s_bn'],
@@ -263,28 +340,8 @@ if __name__ == '__main__':
         ['body.16.conv.1.interstellar4a_shufflenet_7x7_branch2b',   'body.16.conv.1.bn4a_shufflenet_7x7_branch2b'],
         ['body.16.proj_conv.interstellar4a_proj_s',                 'body.16.proj_conv.interstellar4a_proj_s_bn'],
         ['body.16.proj_conv.interstellar4a_proj',                   'body.16.proj_conv.bn4a_proj', 'body.16.proj_conv.relu4a_proj'],
-        ['fpn.output1.0', 'fpn.output1.1', 'fpn.output1.2'],
-        ['fpn.output2.0', 'fpn.output2.1', 'fpn.output2.2'],
-        ['fpn.output3.0', 'fpn.output3.1', 'fpn.output3.2'],
-        ['fpn.merge1.0', 'fpn.merge1.1', 'fpn.merge1.2'],
-        ['fpn.merge2.0', 'fpn.merge2.1', 'fpn.merge2.2'],
-        ['ssh1.conv3X3.0',   'ssh1.conv3X3.1'],
-        ['ssh1.conv5X5_1.0', 'ssh1.conv5X5_1.1', 'ssh1.conv5X5_1.2'],
-        ['ssh1.conv5X5_2.0', 'ssh1.conv5X5_2.1'],
-        ['ssh1.conv7X7_2.0', 'ssh1.conv7X7_2.1', 'ssh1.conv7X7_2.2'],
-        ['ssh1.conv7x7_3.0', 'ssh1.conv7x7_3.1'],
-        ['ssh2.conv3X3.0',   'ssh2.conv3X3.1'],
-        ['ssh2.conv5X5_1.0', 'ssh2.conv5X5_1.1', 'ssh2.conv5X5_1.2'],
-        ['ssh2.conv5X5_2.0', 'ssh2.conv5X5_2.1'],
-        ['ssh2.conv7X7_2.0', 'ssh2.conv7X7_2.1', 'ssh2.conv7X7_2.2'],
-        ['ssh2.conv7x7_3.0', 'ssh2.conv7x7_3.1'],
-        ['ssh3.conv3X3.0',   'ssh3.conv3X3.1'],
-        ['ssh3.conv5X5_1.0', 'ssh3.conv5X5_1.1', 'ssh3.conv5X5_1.2'],
-        ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
-        ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
-        ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
         ], inplace=True)
-    
+    ''' 
     '''
     torch.quantization.fuse_modules(net, [['body.stage1.0.0', 'body.stage1.0.1', 'body.stage1.0.2'],
                                           ['body.stage1.1.0', 'body.stage1.1.1', 'body.stage1.1.2'],
@@ -313,57 +370,42 @@ if __name__ == '__main__':
                                           ['body.stage3.0.3', 'body.stage3.0.4', 'body.stage3.0.5'],
                                           ['body.stage3.1.0', 'body.stage3.1.1', 'body.stage3.1.2'],
                                           ['body.stage3.1.3', 'body.stage3.1.4', 'body.stage3.1.5'],
-                                          ['fpn.output1.0', 'fpn.output1.1', 'fpn.output1.2'],
-                                          ['fpn.output2.0', 'fpn.output2.1', 'fpn.output2.2'],
-                                          ['fpn.output3.0', 'fpn.output3.1', 'fpn.output3.2'],
-                                          ['fpn.merge1.0', 'fpn.merge1.1', 'fpn.merge1.2'],
-                                          ['fpn.merge2.0', 'fpn.merge2.1', 'fpn.merge2.2'],
-                                          ['ssh1.conv3X3.0',   'ssh1.conv3X3.1'],
-                                          ['ssh1.conv5X5_1.0', 'ssh1.conv5X5_1.1', 'ssh1.conv5X5_1.2'],
-                                          ['ssh1.conv5X5_2.0', 'ssh1.conv5X5_2.1'],
-                                          ['ssh1.conv7X7_2.0', 'ssh1.conv7X7_2.1', 'ssh1.conv7X7_2.2'],
-                                          ['ssh1.conv7x7_3.0', 'ssh1.conv7x7_3.1'],
-                                          ['ssh2.conv3X3.0',   'ssh2.conv3X3.1'],
-                                          ['ssh2.conv5X5_1.0', 'ssh2.conv5X5_1.1', 'ssh2.conv5X5_1.2'],
-                                          ['ssh2.conv5X5_2.0', 'ssh2.conv5X5_2.1'],
-                                          ['ssh2.conv7X7_2.0', 'ssh2.conv7X7_2.1', 'ssh2.conv7X7_2.2'],
-                                          ['ssh2.conv7x7_3.0', 'ssh2.conv7x7_3.1'],
-                                          ['ssh3.conv3X3.0',   'ssh3.conv3X3.1'],
-                                          ['ssh3.conv5X5_1.0', 'ssh3.conv5X5_1.1', 'ssh3.conv5X5_1.2'],
-                                          ['ssh3.conv5X5_2.0', 'ssh3.conv5X5_2.1'],
-                                          ['ssh3.conv7X7_2.0', 'ssh3.conv7X7_2.1', 'ssh3.conv7X7_2.2'],
-                                          ['ssh3.conv7x7_3.0', 'ssh3.conv7x7_3.1'],
-                                          
                                          ], inplace=True)
     '''
-    print(net)
+    #print(net)
 
     # insert observers
     #torch.quantization.prepare(net, inplace=True)
+    
     # Calibrate the model and collect statistics
 
-    #test(net, device, args)
+    #test(net, device, args, 5)
 
 
     # convert to quantized version
     #torch.quantization.convert(net, inplace=True)
 
     #net = net.to(device)
-    inp = torch.randn(1, 3, 768, 1024).to(device)
-    net = net.to(device)
-    net.eval()
+    inp = torch.randn(1, 3, 480, 640).to(device)
+    if args.cl:
+        inp = inp.contiguous(memory_format=torch.channels_last)
     if args.mkl:
-        #net = mkldnn.to_mkldnn(net)
-        net.activate_mkldnn()
+        print('ok')
+        net = mkldnn.to_mkldnn(copy.deepcopy(net)) #, torch.bfloat16)
+        #net.activate_mkldnn()
         inp = inp.to_mkldnn()
     if args.amp:
-        #net.half()
+        net.half()
         inp = inp.half()
     net.eval()
     with autocast(args.amp):
         net = torch.jit.trace(net, inp, check_trace=False)
     if not args.mkl:
         net = torch.jit.freeze(net)
+        print(net.code)
+    # Force to MKL
+    if args.mkl:
+        getattr(torch._C, '_jit_pass_convert_frozen_ops_to_mkldnn')(net.graph)
 
     if args.mobile:
         torchnet = optimize_for_mobile(net)
@@ -371,11 +413,11 @@ if __name__ == '__main__':
         test(torchnet, device, args)
     else:
         if args.amp:
-            net.save('retina-detnas_opt_amp.pt')
+            net.save('retina-regnetx_opt_amp.pt')
         elif args.mkl:
-            net.save('retina-detnas_opt_mkl.pt')
+            net.save('retina-regnetx_opt_mkl.pt')
         else:
-            net.save('retina-detnas_opt.pt')
+            net.save('retina-regnetx_opt.pt')
 
         test(net, device, args)
 

@@ -14,8 +14,8 @@ from models.detnas.network import ShuffleNetV2DetNAS
 
 from torch.quantization import QuantStub, DeQuantStub
 
-import timm
-
+#import timm
+from models.regnet import regnetx_004, regnetx_032
 
 class ClassHead(nn.Module):
     def __init__(self,inchannels=512,num_anchors=3):
@@ -81,9 +81,23 @@ class RetinaFace(nn.Module):
             backbone = backbone.features
             self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
             in_channels_list = [ 160, 320, 640 ]
-        elif net == 'mnet2':
-            self.body = timm.create_model('mobilenetv2_100', pretrained=True, features_only=True, out_indices=(0,1,2))
-            in_channels_list = [ 16, 24, 32 ]
+        elif net == 'regnety':
+            backbone = regnetx_004()
+            checkpoint = torch.load("regnet_004.pth", map_location=torch.device('cpu')) 
+            backbone.load_state_dict(checkpoint)
+            #backbone = torch.hub.load('rwightman/pytorch-image-models', 'regnety_002', pretrained=True)
+            print(backbone)
+            return_layers = {'layer1': 1, 'layer2': 2, 'layer3': 3}
+            self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
+            in_channels_list = [ 32, 64, 160 ]
+        elif net == 'regnetx':
+            backbone = regnetx_032()
+            checkpoint = torch.load("regnet_032.pth", map_location=torch.device('cpu')) 
+            backbone.load_state_dict(checkpoint)
+            print(backbone)
+            return_layers = {'layer1': 1, 'layer2': 2, 'layer3': 3}
+            self.body = _utils.IntermediateLayerGetter(backbone, return_layers)
+            in_channels_list = [ 96, 192, 432 ]
 
         out_channels = in_channels_list[0]
         self.fpn = FPN(in_channels_list,out_channels)
@@ -94,7 +108,7 @@ class RetinaFace(nn.Module):
         self.ClassHead = self._make_class_head(inchannels=out_channels)
         self.BboxHead = self._make_bbox_head(inchannels=out_channels)
         self.LandmarkHead = self._make_landmark_head(inchannels=out_channels)
-        self.lin = nn.Conv2d(3, 16, kernel_size=(3,3), stride=(2,2), padding=1)
+        self.lin = nn.Conv2d(3, 3, kernel_size=(3,3), stride=(2,2), padding=1)
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -113,7 +127,7 @@ class RetinaFace(nn.Module):
         for i in range(fpn_num):
             landmarkhead.append(LandmarkHead(inchannels,anchor_num))
         return landmarkhead
-
+    
     def activate_mkldnn(self, inplace=True):
          # convert to mkldnn
          self.body.eval()
@@ -124,14 +138,16 @@ class RetinaFace(nn.Module):
          self.BboxHead.eval()
          self.LandmarkHead.eval()
          if inplace:
-             self.body = mkldnn_utils.to_mkldnn(self.body)
+             #self.body = mkldnn_utils.to_mkldnn(self.body)
+             #self.body['0'] = mkldnn_utils.to_mkldnn(self.body['0'])
+             self.fpn = mkldnn_utils.to_mkldnn(self.fpn)
              self.ssh1 = mkldnn_utils.to_mkldnn(self.ssh1)
              self.ssh2 = mkldnn_utils.to_mkldnn(self.ssh2)
              self.ssh3 = mkldnn_utils.to_mkldnn(self.ssh3)
              self.lin = mkldnn_utils.to_mkldnn(self.lin)
-             #self.ClassHead = mkldnn_utils.to_mkldnn(self.ClassHead)
-             #self.BboxHead = mkldnn_utils.to_mkldnn(self.BboxHead)
-             #self.LandmarkHead = mkldnn_utils.to_mkldnn(self.LandmarkHead)
+             self.ClassHead = mkldnn_utils.to_mkldnn(self.ClassHead)
+             self.BboxHead = mkldnn_utils.to_mkldnn(self.BboxHead)
+             self.LandmarkHead = mkldnn_utils.to_mkldnn(self.LandmarkHead)
          else:
              self.body_mkl = mkldnn_utils.to_mkldnn(self.body)
              self.ssh1_mkl = mkldnn_utils.to_mkldnn(self.ssh1)
@@ -143,21 +159,22 @@ class RetinaFace(nn.Module):
 
              return self.body_mkl, self.ssh1_mkl, self.ssh2_mkl, self.ssh3_mkl,\
                     self.ClassHead_mkl, self.BboxHead_mkl, self.LandmarkHead_mkl
+    
 
     def forward(self,inputs):
-        out = self.body(self.lin(inputs))
-        if inputs.is_mkldnn:
-            for k, v in out.items():
-                out[k] = v.to_dense()
+        out = self.lin(inputs)
+        #if inputs.is_mkldnn:
+        #    out = out.to_dense()
+        out = self.body(out)
 
         # FPN
         fpn = self.fpn(out)
 
-        if inputs.is_mkldnn:
-            for i in range(len(fpn)):
-                fpn[i] = fpn[i].to_mkldnn()
+        #if inputs.is_mkldnn:
+        #    fpn[0] = fpn[0].to_mkldnn()
+        #    fpn[1] = fpn[1].to_mkldnn()
+        #    fpn[2] = fpn[2].to_mkldnn()
 
-        # SSH
         feature1 = self.ssh1(fpn[0])
         feature2 = self.ssh2(fpn[1])
         feature3 = self.ssh3(fpn[2])

@@ -10,21 +10,22 @@ from layers.modules import MultiBoxLoss
 from layers.functions.prior_box import PriorBox
 import time
 import datetime
+import random
 import math
 import gc
 from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
-parser.add_argument('-b', '--batch_size', default=16, type=int, help='Batch size for training')
+parser.add_argument('-b', '--batch_size', default=48, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--ngpu', default=1, type=int, help='gpus')
-parser.add_argument('--lr', '--learning-rate', default=2e-4, type=float, help='initial learning rate')
+parser.add_argument('--lr', '--learning-rate', default=6e-6, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('-max', '--max_epoch', default=300, type=int, help='max epoch for retraining')
-parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
+parser.add_argument('--weight_decay', default=1e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
 parser.add_argument('--img_dim', default=640, help='Input shape when training')
@@ -48,7 +49,7 @@ training_dataset = args.training_dataset
 save_folder = args.save_folder
 gpu_train = cfg['gpu_train']
 
-net = RetinaFace(net='detnas')
+net = RetinaFace(net='regnetx')
 print("Printing net...")
 print(net)
 
@@ -104,6 +105,7 @@ def train():
     torch.cuda.empty_cache()
 
     for iteration in range(start_iter, max_iter):
+        random.seed(int(time.time()) + iteration)
         if iteration % epoch_size == 0:
             # create batch iterator
             batch_iterator = iter(data.DataLoader(dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
